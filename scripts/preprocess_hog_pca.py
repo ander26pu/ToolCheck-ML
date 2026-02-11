@@ -89,6 +89,12 @@ def parse_args() -> argparse.Namespace:
         help="Lado real del marcador ArUco en cm.",
     )
     parser.add_argument(
+        "--corner-expansion-factor",
+        type=float,
+        default=0.95,
+        help="Factor de interpolacion inner->outer para rectificacion por esquinas.",
+    )
+    parser.add_argument(
         "--debug-samples-per-class",
         type=int,
         default=5,
@@ -412,6 +418,99 @@ def choose_missing_positions_by_corner_distance(
     for pos, idx in zip(missing_positions, best_assignment):
         out[pos] = candidate_pool[idx]
     return out
+
+
+def src_points_from_assigned_markers(
+    assigned_by_pos: Dict[str, Dict[str, object]], expansion_factor: float
+) -> Optional[np.ndarray]:
+    # Corner indices del algoritmo que ya funcionaba en tu flujo original.
+    # OpenCV ArUco corners: [0,1,2,3]
+    corner_idx = {
+        "tl": (2, 0),  # (inner, outer)
+        "tr": (3, 1),
+        "br": (0, 2),
+        "bl": (1, 3),
+    }
+    pts: List[np.ndarray] = []
+    for pos in POSITION_ORDER:
+        cand = assigned_by_pos.get(pos)
+        if cand is None:
+            return None
+        corners = np.array(cand["corners"], dtype=np.float32).reshape(4, 2)
+        inner_idx, outer_idx = corner_idx[pos]
+        inner = corners[inner_idx]
+        outer = corners[outer_idx]
+        p = inner + expansion_factor * (outer - inner)
+        pts.append(p)
+    return np.array(pts, dtype=np.float32)
+
+
+def green_mask_robust(rectified_bgr: np.ndarray) -> np.ndarray:
+    hsv = cv2.cvtColor(rectified_bgr, cv2.COLOR_BGR2HSV)
+    mask_main = cv2.inRange(
+        hsv, np.array([35, 30, 30], dtype=np.uint8), np.array([95, 255, 255], dtype=np.uint8)
+    )
+    mask_wide = cv2.inRange(
+        hsv, np.array([25, 20, 20], dtype=np.uint8), np.array([105, 255, 255], dtype=np.uint8)
+    )
+    ratio_main = float(np.count_nonzero(mask_main)) / mask_main.size
+    ratio_wide = float(np.count_nonzero(mask_wide)) / mask_wide.size
+    # Queremos capturar la placa verde completa; preferimos máscara con cobertura realista.
+    if 0.20 <= ratio_main <= 0.95:
+        mask = mask_main
+    elif 0.20 <= ratio_wide <= 0.98:
+        mask = mask_wide
+    else:
+        mask = cv2.bitwise_or(mask_main, mask_wide)
+
+    kernel3 = np.ones((3, 3), np.uint8)
+    kernel5 = np.ones((5, 5), np.uint8)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel5, iterations=2)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel3, iterations=1)
+    mask = cv2.GaussianBlur(mask, (5, 5), 0)
+    return mask
+
+
+def clean_alpha_keep_tool(alpha: np.ndarray) -> np.ndarray:
+    binary = (alpha > 20).astype(np.uint8)
+    n_labels, labels, stats, _ = cv2.connectedComponentsWithStats(binary, connectivity=8)
+    if n_labels <= 1:
+        return alpha
+
+    h, w = alpha.shape[:2]
+    border_margin = max(3, int(min(h, w) * 0.02))
+    best_label = -1
+    best_area = -1
+
+    for label in range(1, n_labels):
+        x = int(stats[label, cv2.CC_STAT_LEFT])
+        y = int(stats[label, cv2.CC_STAT_TOP])
+        ww = int(stats[label, cv2.CC_STAT_WIDTH])
+        hh = int(stats[label, cv2.CC_STAT_HEIGHT])
+        area = int(stats[label, cv2.CC_STAT_AREA])
+        touches_border = (
+            x <= border_margin
+            or y <= border_margin
+            or (x + ww) >= (w - border_margin)
+            or (y + hh) >= (h - border_margin)
+        )
+        # Priorizamos componentes no pegadas al borde (la herramienta).
+        if not touches_border and area > best_area:
+            best_area = area
+            best_label = label
+
+    # Fallback: si todo toca borde, usar la componente mas grande.
+    if best_label < 0:
+        for label in range(1, n_labels):
+            area = int(stats[label, cv2.CC_STAT_AREA])
+            if area > best_area:
+                best_area = area
+                best_label = label
+
+    keep = (labels == best_label).astype(np.uint8) * 255
+    keep = cv2.morphologyEx(keep, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8), iterations=1)
+    cleaned = cv2.bitwise_and(alpha, alpha, mask=keep)
+    return cleaned
 
 def create_marker_mask(
     image_shape: Tuple[int, int, int], ordered_markers: List[np.ndarray], margin: int
@@ -761,6 +860,7 @@ def preprocess_one(
     board: cv2.aruco.Board,
     calibration: CalibrationResult,
     rectified_size: int,
+    corner_expansion_factor: float,
     marker_margin: int,
     marker_size_cm: float,
     target_size: int,
@@ -833,28 +933,20 @@ def preprocess_one(
     )
     assigned_by_pos.update(filled)
 
-    source_points: List[np.ndarray] = []
     selected_markers: List[np.ndarray] = []
-    center_board_map = marker_center_board_points(marker_size_cm=marker_size_cm)
-    center_board_arr = np.array([center_board_map[p] for p in POSITION_ORDER], dtype=np.float32)
-    center_dst_arr = board_points_to_destination(
-        center_board_arr, marker_size_cm=marker_size_cm, rectified_size=rectified_size
-    )
-    center_dst_map = {p: center_dst_arr[i] for i, p in enumerate(POSITION_ORDER)}
-    dest_points: List[np.ndarray] = []
+    source_points: List[np.ndarray] = []
     for pos in POSITION_ORDER:
         cand = assigned_by_pos.get(pos)
         if cand is None:
             continue
-        source_points.append(np.array(cand["center"], dtype=np.float32))
-        dest_points.append(np.array(center_dst_map[pos], dtype=np.float32))
         selected_markers.append(np.array(cand["corners"], dtype=np.float32))
+        source_points.append(np.array(cand["center"], dtype=np.float32))
 
     info["markers_expected_assigned"] = int(expected_assigned)
     info["markers_used_for_transform"] = int(len(source_points))
     info["markers_total_candidates"] = int(len(marker_candidates))
     if expected_assigned >= 4:
-        info["selection_mode"] = "center_expected_ids"
+        info["selection_mode"] = "corners_expected_ids"
     elif expected_assigned >= 2:
         info["selection_mode"] = "center_expected_plus_positional"
     else:
@@ -873,25 +965,63 @@ def preprocess_one(
         return False, debug_images, info, None
 
     source_arr = np.array(source_points, dtype=np.float32)
-    dest_arr = np.array(dest_points, dtype=np.float32)
     transform_kind = "affine"
     inliers_count = 0
     matrix: Optional[np.ndarray] = None
 
-    if len(source_points) >= 4:
-        matrix = cv2.getPerspectiveTransform(source_arr[:4], dest_arr[:4])
-        transform_kind = "perspective"
-        inliers_count = 4
-    else:
-        matrix_aff, inliers = cv2.estimateAffinePartial2D(
-            source_arr, dest_arr, method=cv2.LMEDS
+    # Caso preferido: los 4 IDs esperados detectados -> misma logica que tu flujo original.
+    if expected_assigned >= 4:
+        src_pts = src_points_from_assigned_markers(
+            assigned_by_pos, expansion_factor=corner_expansion_factor
         )
-        if matrix_aff is None and len(source_points) == 3:
-            matrix_aff, inliers = cv2.estimateAffine2D(
-                source_arr, dest_arr, method=cv2.LMEDS
+        if src_pts is not None and src_pts.shape == (4, 2):
+            dst_pts = np.array(
+                [
+                    [0.0, 0.0],
+                    [float(rectified_size - 1), 0.0],
+                    [float(rectified_size - 1), float(rectified_size - 1)],
+                    [0.0, float(rectified_size - 1)],
+                ],
+                dtype=np.float32,
             )
-        matrix = matrix_aff
-        inliers_count = int(inliers.sum()) if inliers is not None else 0
+            matrix = cv2.getPerspectiveTransform(src_pts, dst_pts)
+            transform_kind = "perspective_corners"
+            inliers_count = 4
+
+    # Fallback: centros (perspective/affine), para cuando faltan IDs esperados.
+    if matrix is None:
+        center_board_map = marker_center_board_points(marker_size_cm=marker_size_cm)
+        center_board_arr = np.array([center_board_map[p] for p in POSITION_ORDER], dtype=np.float32)
+        center_dst_arr = board_points_to_destination(
+            center_board_arr, marker_size_cm=marker_size_cm, rectified_size=rectified_size
+        )
+        center_dst_map = {p: center_dst_arr[i] for i, p in enumerate(POSITION_ORDER)}
+        dest_points: List[np.ndarray] = []
+        src_points_fb: List[np.ndarray] = []
+        for pos in POSITION_ORDER:
+            cand = assigned_by_pos.get(pos)
+            if cand is None:
+                continue
+            src_points_fb.append(np.array(cand["center"], dtype=np.float32))
+            dest_points.append(np.array(center_dst_map[pos], dtype=np.float32))
+        src_fb = np.array(src_points_fb, dtype=np.float32)
+        dst_fb = np.array(dest_points, dtype=np.float32)
+
+        if len(src_points_fb) >= 4:
+            matrix = cv2.getPerspectiveTransform(src_fb[:4], dst_fb[:4])
+            transform_kind = "perspective_centers"
+            inliers_count = 4
+        else:
+            matrix_aff, inliers = cv2.estimateAffinePartial2D(
+                src_fb, dst_fb, method=cv2.LMEDS
+            )
+            if matrix_aff is None and len(src_points_fb) == 3:
+                matrix_aff, inliers = cv2.estimateAffine2D(
+                    src_fb, dst_fb, method=cv2.LMEDS
+                )
+            matrix = matrix_aff
+            transform_kind = "affine_centers"
+            inliers_count = int(inliers.sum()) if inliers is not None else 0
 
     debug_images["02_detection"] = draw_detection_debug(
         undistorted, corners, ids, selected_markers, source_arr
@@ -903,14 +1033,14 @@ def preprocess_one(
     info["transform_kind"] = transform_kind
     info["transform_inliers"] = inliers_count
 
-    if transform_kind == "perspective":
+    if transform_kind.startswith("perspective"):
         rectified = cv2.warpPerspective(undistorted, matrix, (rectified_size, rectified_size))
     else:
         rectified = cv2.warpAffine(undistorted, matrix, (rectified_size, rectified_size))
     debug_images["03_rectified"] = rectified
 
     marker_mask = create_marker_mask(undistorted.shape, selected_markers, margin=marker_margin)
-    if transform_kind == "perspective":
+    if transform_kind.startswith("perspective"):
         marker_mask_rectified = cv2.warpPerspective(
             marker_mask, matrix, (rectified_size, rectified_size)
         )
@@ -918,11 +1048,12 @@ def preprocess_one(
         marker_mask_rectified = cv2.warpAffine(
             marker_mask, matrix, (rectified_size, rectified_size)
         )
-    green_mask = dynamic_green_mask(rectified)
+    green_mask = green_mask_robust(rectified)
     debug_images["04_green_mask"] = green_mask
 
     combined_mask = cv2.bitwise_or(green_mask, marker_mask_rectified)
     alpha = cv2.bitwise_not(combined_mask)
+    alpha = clean_alpha_keep_tool(alpha)
     object_bgr = rectified.copy()
     object_bgr[alpha < 8] = 0
     object_rgba = cv2.cvtColor(object_bgr, cv2.COLOR_BGR2BGRA)
@@ -1157,6 +1288,7 @@ def main() -> None:
             board=board,
             calibration=calibration,
             rectified_size=args.rectified_size,
+            corner_expansion_factor=args.corner_expansion_factor,
             marker_margin=args.marker_margin,
             marker_size_cm=args.marker_size_cm,
             target_size=args.target_size,

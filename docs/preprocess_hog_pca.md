@@ -9,8 +9,9 @@ Script principal:
 3. Intenta calibrar camara con ArUco (si no es confiable, se desactiva solo).
 4. Preprocesa cada imagen:
 - deteccion robusta de ArUco (multi-paso)
-- rectificacion por homografia usando IDs esperados
-- remocion de fondo verde + mascara de marcadores
+- rectificacion priorizando esquinas internas/externas de los 4 IDs esperados
+- fallback de transformacion por centros si faltan IDs
+- remocion de fondo verde + mascara de marcadores + limpieza de alpha (componente principal)
 - ROI automatico
 - denoise + CLAHE
 - resize letterbox a `target-size`
@@ -29,6 +30,11 @@ Puedes ajustar con `--calibration-progress-every 25`.
 ## Ejecucion rapida de prueba
 ```powershell
 python scripts/preprocess_hog_pca.py --max-images 120 --calibration-max-images 120 --detect-max-dim 720 --output-root artifacts/preprocess_hog_pca_smoke
+```
+
+Si quieres alinear la rectificacion al flujo clasico de tus scripts antiguos:
+```powershell
+python scripts/preprocess_hog_pca.py --corner-expansion-factor 0.95 --calibration-max-images 0 --output-root artifacts/preprocess_hog_pca_v2
 ```
 
 Para omitir calibracion en una corrida (y usar fallback sin `undistort`):
