@@ -98,3 +98,7 @@ Guia de entrenamiento y evaluacion con los features HOG+PCA:
 ## Training ML clasico (bloque 1)
 Guia para entrenar ExtraTrees, Logistic Regression y KNN:
 - `docs/train_classic_ml_block1.md`
+
+## Training ML clasico (bloque 2)
+Guia para entrenar GradientBoosting, AdaBoost y NaiveBayes:
+- `docs/train_classic_ml_block2.md`

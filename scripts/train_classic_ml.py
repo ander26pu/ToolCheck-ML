@@ -11,7 +11,7 @@ import joblib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import ExtraTreesClassifier
+from sklearn.ensemble import AdaBoostClassifier, ExtraTreesClassifier, GradientBoostingClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
     accuracy_score,
@@ -19,20 +19,33 @@ from sklearn.metrics import (
     confusion_matrix,
     precision_recall_fscore_support,
 )
+from sklearn.naive_bayes import GaussianNB
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
+from sklearn.tree import DecisionTreeClassifier
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Entrena modelo clasico (ExtraTrees, LogReg, KNN) con split train/val/test."
+        description=(
+            "Entrena modelo clasico "
+            "(ExtraTrees, LogReg, KNN, GradientBoosting, AdaBoost, NaiveBayes) "
+            "con split train/val/test."
+        )
     )
     parser.add_argument(
         "--model",
         type=str,
         required=True,
-        choices=["extratrees", "logreg", "knn"],
+        choices=[
+            "extratrees",
+            "logreg",
+            "knn",
+            "gradientboosting",
+            "adaboost",
+            "naivebayes",
+        ],
         help="Modelo clasico a entrenar.",
     )
     parser.add_argument(
@@ -155,6 +168,55 @@ def model_candidates(model_name: str) -> List[Dict[str, object]]:
                     )
         return candidates
 
+    if model_name == "gradientboosting":
+        for n_estimators in [80, 150]:
+            for learning_rate in [0.05, 0.1]:
+                for subsample in [0.8, 1.0]:
+                    candidates.append(
+                        {
+                            "name": (
+                                f"gb_n{n_estimators}_lr{learning_rate}_"
+                                f"d2_ss{subsample}_fsqrt"
+                            ),
+                            "n_estimators": n_estimators,
+                            "learning_rate": learning_rate,
+                            "max_depth": 2,
+                            "subsample": subsample,
+                            "max_features": "sqrt",
+                        }
+                    )
+        return candidates
+
+    if model_name == "adaboost":
+        for n_estimators in [200, 400, 600]:
+            for learning_rate in [0.3, 0.7, 1.0]:
+                for base_depth in [1, 2]:
+                    candidates.append(
+                        {
+                            "name": (
+                                f"ab_n{n_estimators}_lr{learning_rate}_"
+                                f"d{base_depth}"
+                            ),
+                            "n_estimators": n_estimators,
+                            "learning_rate": learning_rate,
+                            "base_depth": base_depth,
+                        }
+                    )
+        return candidates
+
+    if model_name == "naivebayes":
+        for var_smoothing in [1e-9, 1e-8, 1e-7, 1e-6, 1e-5]:
+            for use_scaler in [False, True]:
+                scaler_label = "sc" if use_scaler else "nosc"
+                candidates.append(
+                    {
+                        "name": f"gnb_vs{var_smoothing:.0e}_{scaler_label}",
+                        "var_smoothing": var_smoothing,
+                        "use_scaler": use_scaler,
+                    }
+                )
+        return candidates
+
     raise ValueError(f"Modelo no soportado: {model_name}")
 
 
@@ -198,6 +260,39 @@ def build_model(model_name: str, candidate: Dict[str, object], seed: int):
                 ("knn", estimator),
             ]
         )
+
+    if model_name == "gradientboosting":
+        return GradientBoostingClassifier(
+            n_estimators=int(candidate["n_estimators"]),
+            learning_rate=float(candidate["learning_rate"]),
+            max_depth=int(candidate["max_depth"]),
+            subsample=float(candidate["subsample"]),
+            max_features=candidate["max_features"],
+            random_state=seed,
+        )
+
+    if model_name == "adaboost":
+        base_estimator = DecisionTreeClassifier(
+            max_depth=int(candidate["base_depth"]),
+            random_state=seed,
+        )
+        return AdaBoostClassifier(
+            estimator=base_estimator,
+            n_estimators=int(candidate["n_estimators"]),
+            learning_rate=float(candidate["learning_rate"]),
+            random_state=seed,
+        )
+
+    if model_name == "naivebayes":
+        estimator = GaussianNB(var_smoothing=float(candidate["var_smoothing"]))
+        if bool(candidate["use_scaler"]):
+            return Pipeline(
+                steps=[
+                    ("scaler", StandardScaler()),
+                    ("gnb", estimator),
+                ]
+            )
+        return estimator
 
     raise ValueError(f"Modelo no soportado: {model_name}")
 
@@ -500,7 +595,11 @@ def main() -> None:
         "features_npz": str(args.features_npz),
         "selection_metric": args.selection_metric,
         "best_candidate_train_val": {
-            k: (int(v) if isinstance(v, (np.integer,)) else v)
+            k: (
+                int(v)
+                if isinstance(v, np.integer)
+                else (float(v) if isinstance(v, np.floating) else v)
+            )
             for k, v in best_row.items()
             if k
             not in {
