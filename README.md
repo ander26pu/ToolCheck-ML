@@ -80,3 +80,9 @@ Pipeline:
 ---
 
 ## 🗂️ Estructura del repositorio (propuest
+
+---
+
+## Preprocessing HOG + PCA
+Guia de ejecucion del pipeline de preprocesamiento y extraccion de features:
+- `docs/preprocess_hog_pca.md`
