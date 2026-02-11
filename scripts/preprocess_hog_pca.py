@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import time
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
@@ -100,6 +101,12 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=480,
         help="Maximo de imagenes para calibrar camara.",
+    )
+    parser.add_argument(
+        "--calibration-progress-every",
+        type=int,
+        default=25,
+        help="Cada cuantas imagenes mostrar avance en calibracion.",
     )
     parser.add_argument(
         "--pca-variance",
@@ -531,16 +538,42 @@ def estimate_calibration(
     max_images: int,
     detect_max_dim: int,
     seed: int,
+    progress_every: int,
 ) -> CalibrationResult:
+    if max_images <= 0:
+        return CalibrationResult(
+            success=False,
+            camera_matrix=np.eye(3, dtype=np.float32),
+            dist_coeffs=np.zeros((5, 1), dtype=np.float32),
+            reprojection_error=float("nan"),
+            used_frames=0,
+            used_markers=0,
+        )
+
     subset = stratified_subset(items, max_items=max_images, seed=seed)
     all_corners: List[np.ndarray] = []
     all_ids: List[np.ndarray] = []
     marker_counter: List[int] = []
     image_size: Optional[Tuple[int, int]] = None
+    total_subset = len(subset)
+    used_markers_running = 0
+    start_ts = time.perf_counter()
 
-    for item in subset:
+    print(
+        f"  [calib] analizando {total_subset} imagenes candidatas...",
+        flush=True,
+    )
+
+    for idx, item in enumerate(subset, start=1):
         image = cv2.imread(str(item.path))
         if image is None:
+            if progress_every > 0 and (idx % progress_every == 0 or idx == total_subset):
+                elapsed = time.perf_counter() - start_ts
+                print(
+                    f"  [calib {idx}/{total_subset}] frames_validos={len(marker_counter)} "
+                    f"markers={used_markers_running} elapsed={elapsed/60.0:.1f} min",
+                    flush=True,
+                )
             continue
         if image_size is None:
             image_size = (image.shape[1], image.shape[0])
@@ -569,8 +602,23 @@ def estimate_calibration(
         all_corners.extend(frame_corners)
         all_ids.extend(frame_ids)
         marker_counter.append(4)
+        used_markers_running += 4
+
+        if progress_every > 0 and (idx % progress_every == 0 or idx == total_subset):
+            elapsed = time.perf_counter() - start_ts
+            print(
+                f"  [calib {idx}/{total_subset}] frames_validos={len(marker_counter)} "
+                f"markers={used_markers_running} elapsed={elapsed/60.0:.1f} min",
+                flush=True,
+            )
 
     if image_size is None or len(marker_counter) < 12:
+        elapsed = time.perf_counter() - start_ts
+        print(
+            f"  [calib] insuficiente para calibrar (frames_validos={len(marker_counter)}, "
+            f"elapsed={elapsed/60.0:.1f} min)",
+            flush=True,
+        )
         return CalibrationResult(
             success=False,
             camera_matrix=np.eye(3, dtype=np.float32),
@@ -581,6 +629,10 @@ def estimate_calibration(
         )
 
     try:
+        print(
+            f"  [calib] ejecutando calibrateCameraAruco con {len(marker_counter)} frames...",
+            flush=True,
+        )
         reproj, camera_matrix, dist_coeffs, _, _ = cv2.aruco.calibrateCameraAruco(
             all_corners,
             np.array(all_ids, dtype=np.int32),
@@ -606,6 +658,12 @@ def estimate_calibration(
         )
         plausible_reproj = np.isfinite(reproj) and float(reproj) < 8.0
         calibration_ok = bool(plausible_intrinsics and plausible_reproj)
+        elapsed = time.perf_counter() - start_ts
+        print(
+            f"  [calib] terminado en {elapsed/60.0:.1f} min "
+            f"(reproj={float(reproj):.4f}, success={calibration_ok})",
+            flush=True,
+        )
 
         return CalibrationResult(
             success=calibration_ok,
@@ -616,6 +674,11 @@ def estimate_calibration(
             used_markers=int(np.sum(marker_counter)),
         )
     except cv2.error:
+        elapsed = time.perf_counter() - start_ts
+        print(
+            f"  [calib] fallo de OpenCV tras {elapsed/60.0:.1f} min; se usara fallback sin undistort.",
+            flush=True,
+        )
         return CalibrationResult(
             success=False,
             camera_matrix=np.eye(3, dtype=np.float32),
@@ -859,6 +922,7 @@ def main() -> None:
         max_images=args.calibration_max_images,
         detect_max_dim=args.detect_max_dim,
         seed=args.seed,
+        progress_every=args.calibration_progress_every,
     )
     print(
         f"Calibracion: success={calibration.success}, "

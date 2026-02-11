@@ -23,9 +23,17 @@ Script principal:
 python scripts/preprocess_hog_pca.py --data-root data/raw --output-root artifacts/preprocess_hog_pca_v1
 ```
 
+Tip: durante la calibracion ahora se imprime progreso cada N imagenes.
+Puedes ajustar con `--calibration-progress-every 25`.
+
 ## Ejecucion rapida de prueba
 ```powershell
 python scripts/preprocess_hog_pca.py --max-images 120 --calibration-max-images 120 --detect-max-dim 720 --output-root artifacts/preprocess_hog_pca_smoke
+```
+
+Para omitir calibracion en una corrida (y usar fallback sin `undistort`):
+```powershell
+python scripts/preprocess_hog_pca.py --calibration-max-images 0 --output-root artifacts/preprocess_hog_pca_no_calib
 ```
 
 ## Salidas principales
