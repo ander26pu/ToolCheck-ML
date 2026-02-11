@@ -94,3 +94,7 @@ Guia de entrenamiento y evaluacion con los features HOG+PCA:
 ## Training Random Forest (train/val/test)
 Guia de entrenamiento y evaluacion con los features HOG+PCA:
 - `docs/train_random_forest.md`
+
+## Training ML clasico (bloque 1)
+Guia para entrenar ExtraTrees, Logistic Regression y KNN:
+- `docs/train_classic_ml_block1.md`
