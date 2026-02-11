@@ -1,0 +1,56 @@
+{
+  "model": "adaboost",
+  "features_npz": "artifacts\\preprocess_hog_pca_v3\\features\\hog_pca_features_split.npz",
+  "selection_metric": "f1_macro",
+  "best_candidate_train_val": {
+    "model": "adaboost",
+    "name": "ab_n400_lr0.7_d2",
+    "n_estimators": 400,
+    "learning_rate": 0.7,
+    "base_depth": 2
+  },
+  "dataset_shapes": {
+    "X_train": [
+      1175,
+      542
+    ],
+    "X_val": [
+      253,
+      542
+    ],
+    "X_test": [
+      252,
+      542
+    ],
+    "classes": [
+      "alicate_corte",
+      "calibrador",
+      "cutter",
+      "destornillador_chico_plano",
+      "llave_chica_mixta",
+      "llave_regulable",
+      "pelacables",
+      "wincha"
+    ]
+  },
+  "metrics": {
+    "validation": {
+      "accuracy": 0.6007905138339921,
+      "precision_macro": 0.6875350584161495,
+      "recall_macro": 0.6005516353046595,
+      "f1_macro": 0.6189585729544527,
+      "precision_weighted": 0.6928248246163242,
+      "recall_weighted": 0.6007905138339921,
+      "f1_weighted": 0.6219341583876905
+    },
+    "test": {
+      "accuracy": 0.6944444444444444,
+      "precision_macro": 0.7442736437832176,
+      "recall_macro": 0.6952723136442895,
+      "f1_macro": 0.70082814875541,
+      "precision_weighted": 0.7492713028174897,
+      "recall_weighted": 0.6944444444444444,
+      "f1_weighted": 0.7031023038538309
+    }
+  }
+}
