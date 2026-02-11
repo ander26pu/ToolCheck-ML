@@ -16,8 +16,9 @@ Script principal:
 - denoise + CLAHE
 - resize letterbox a `target-size`
 5. Extrae HOG (OpenCV).
-6. Ejecuta PCA (varianza objetivo).
-7. Guarda artefactos comprimidos + plots + reportes.
+6. Separa dataset en split estratificado train/val/test (default 70/15/15).
+7. Ajusta `StandardScaler + PCA` solo en train y transforma val/test.
+8. Guarda artefactos comprimidos + plots + reportes.
 
 ## Ejecucion completa (dataset real)
 ```powershell
@@ -26,6 +27,11 @@ python scripts/preprocess_hog_pca.py --data-root data/raw --output-root artifact
 
 Tip: durante la calibracion ahora se imprime progreso cada N imagenes.
 Puedes ajustar con `--calibration-progress-every 25`.
+
+Para controlar el split:
+```powershell
+python scripts/preprocess_hog_pca.py --train-ratio 0.70 --val-ratio 0.15 --test-ratio 0.15
+```
 
 ## Ejecucion rapida de prueba
 ```powershell
@@ -47,15 +53,20 @@ python scripts/preprocess_hog_pca.py --calibration-max-images 0 --output-root ar
 - `artifacts/preprocess_hog_pca_v1/debug_samples/`
 - `artifacts/preprocess_hog_pca_v1/debug_failures/`
 - `artifacts/preprocess_hog_pca_v1/features/hog_features.npz`
+- `artifacts/preprocess_hog_pca_v1/features/hog_features_split.npz`
 - `artifacts/preprocess_hog_pca_v1/features/hog_pca_features.npz`
+- `artifacts/preprocess_hog_pca_v1/features/hog_pca_features_split.npz`
 - `artifacts/preprocess_hog_pca_v1/features/hog_scaler.joblib`
 - `artifacts/preprocess_hog_pca_v1/features/hog_pca_model.joblib`
 - `artifacts/preprocess_hog_pca_v1/plots/pca_scatter_pc1_pc2.png`
 - `artifacts/preprocess_hog_pca_v1/plots/pca_cumulative_variance.png`
 - `artifacts/preprocess_hog_pca_v1/logs/preprocess_metadata.csv`
+- `artifacts/preprocess_hog_pca_v1/logs/dataset_split.csv`
+- `artifacts/preprocess_hog_pca_v1/logs/dataset_split_by_class.csv`
 - `artifacts/preprocess_hog_pca_v1/logs/summary.json`
 
 ## Notas
 - El script guarda checkpoints completos solo para muestras por clase y para fallidas.
 - La calibracion se calcula pero solo se aplica si pasa chequeos de plausibilidad.
-- En esta fase no hay split train/val/test: PCA se ajusta sobre el conjunto procesado para exploracion.
+- El split es estratificado por clase y queda trazado en `dataset_split.csv`.
+- `scaler` y `PCA` se ajustan solo con train para evitar leakage.

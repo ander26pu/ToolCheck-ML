@@ -17,6 +17,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from sklearn.decomposition import PCA
+from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
 
@@ -123,6 +124,24 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=0.95,
         help="Varianza acumulada objetivo para PCA.",
+    )
+    parser.add_argument(
+        "--train-ratio",
+        type=float,
+        default=0.70,
+        help="Proporcion para split train.",
+    )
+    parser.add_argument(
+        "--val-ratio",
+        type=float,
+        default=0.15,
+        help="Proporcion para split validation.",
+    )
+    parser.add_argument(
+        "--test-ratio",
+        type=float,
+        default=0.15,
+        help="Proporcion para split test.",
     )
     parser.add_argument(
         "--seed",
@@ -1165,6 +1184,77 @@ def plot_hog_norms(hog_features: np.ndarray, output_path: Path) -> None:
     plt.savefig(output_path, dpi=180)
     plt.close()
 
+
+def build_stratified_split(
+    labels: np.ndarray,
+    train_ratio: float,
+    val_ratio: float,
+    test_ratio: float,
+    seed: int,
+) -> np.ndarray:
+    if labels.ndim != 1:
+        raise ValueError("labels debe ser un vector 1D")
+    if len(labels) < 3:
+        return np.array(["train"] * len(labels))
+
+    if min(train_ratio, val_ratio, test_ratio) < 0:
+        raise ValueError("Los ratios train/val/test deben ser >= 0")
+    ratio_sum = train_ratio + val_ratio + test_ratio
+    if ratio_sum <= 0:
+        raise ValueError("La suma de ratios train/val/test debe ser > 0")
+
+    train_ratio /= ratio_sum
+    val_ratio /= ratio_sum
+    test_ratio /= ratio_sum
+
+    indices = np.arange(len(labels))
+    split = np.empty(len(labels), dtype="<U10")
+
+    if test_ratio > 0:
+        try:
+            idx_trainval, idx_test = train_test_split(
+                indices,
+                test_size=test_ratio,
+                stratify=labels,
+                random_state=seed,
+            )
+        except ValueError:
+            idx_trainval, idx_test = train_test_split(
+                indices,
+                test_size=test_ratio,
+                stratify=None,
+                random_state=seed,
+            )
+    else:
+        idx_trainval = indices
+        idx_test = np.array([], dtype=int)
+
+    remain_ratio = train_ratio + val_ratio
+    if val_ratio > 0 and len(idx_trainval) > 1 and remain_ratio > 0:
+        val_share_in_trainval = val_ratio / remain_ratio
+        try:
+            idx_train, idx_val = train_test_split(
+                idx_trainval,
+                test_size=val_share_in_trainval,
+                stratify=labels[idx_trainval],
+                random_state=seed,
+            )
+        except ValueError:
+            idx_train, idx_val = train_test_split(
+                idx_trainval,
+                test_size=val_share_in_trainval,
+                stratify=None,
+                random_state=seed,
+            )
+    else:
+        idx_train = idx_trainval
+        idx_val = np.array([], dtype=int)
+
+    split[idx_train] = "train"
+    split[idx_val] = "val"
+    split[idx_test] = "test"
+    return split
+
 def main() -> None:
     args = parse_args()
     np.random.seed(args.seed)
@@ -1340,31 +1430,91 @@ def main() -> None:
     paths_arr = np.array(rel_paths)
     classes = sorted(set(labels))
 
+    split_arr = build_stratified_split(
+        labels=labels_arr,
+        train_ratio=args.train_ratio,
+        val_ratio=args.val_ratio,
+        test_ratio=args.test_ratio,
+        seed=args.seed,
+    )
+    mask_train = split_arr == "train"
+    mask_val = split_arr == "val"
+    mask_test = split_arr == "test"
+
+    x_hog_train = x_hog[mask_train]
+    x_hog_val = x_hog[mask_val]
+    x_hog_test = x_hog[mask_test]
+
     np.savez_compressed(
         output_paths["features"] / "hog_features.npz",
         X_hog=x_hog,
         y=labels_arr,
         paths=paths_arr,
+        split=split_arr,
+        classes=np.array(classes),
+    )
+    np.savez_compressed(
+        output_paths["features"] / "hog_features_split.npz",
+        X_train=x_hog_train,
+        y_train=labels_arr[mask_train],
+        paths_train=paths_arr[mask_train],
+        X_val=x_hog_val,
+        y_val=labels_arr[mask_val],
+        paths_val=paths_arr[mask_val],
+        X_test=x_hog_test,
+        y_test=labels_arr[mask_test],
+        paths_test=paths_arr[mask_test],
         classes=np.array(classes),
     )
 
     scaler = StandardScaler()
-    x_scaled = scaler.fit_transform(x_hog)
+    x_train_scaled = scaler.fit_transform(x_hog_train)
+    x_val_scaled = scaler.transform(x_hog_val) if len(x_hog_val) else np.empty((0, x_hog.shape[1]), dtype=np.float32)
+    x_test_scaled = scaler.transform(x_hog_test) if len(x_hog_test) else np.empty((0, x_hog.shape[1]), dtype=np.float32)
+
     pca = PCA(n_components=args.pca_variance, random_state=args.seed, svd_solver="full")
-    x_pca = pca.fit_transform(x_scaled).astype(np.float32)
+    x_train_pca = pca.fit_transform(x_train_scaled).astype(np.float32)
+    x_val_pca = pca.transform(x_val_scaled).astype(np.float32) if len(x_val_scaled) else np.empty((0, x_train_pca.shape[1]), dtype=np.float32)
+    x_test_pca = pca.transform(x_test_scaled).astype(np.float32) if len(x_test_scaled) else np.empty((0, x_train_pca.shape[1]), dtype=np.float32)
+
+    x_pca_all = np.zeros((len(x_hog), x_train_pca.shape[1]), dtype=np.float32)
+    x_pca_all[mask_train] = x_train_pca
+    if len(x_val_pca):
+        x_pca_all[mask_val] = x_val_pca
+    if len(x_test_pca):
+        x_pca_all[mask_test] = x_test_pca
 
     np.savez_compressed(
         output_paths["features"] / "hog_pca_features.npz",
-        X_pca=x_pca,
+        X_pca=x_pca_all,
         y=labels_arr,
         paths=paths_arr,
+        split=split_arr,
+        classes=np.array(classes),
+    )
+    np.savez_compressed(
+        output_paths["features"] / "hog_pca_features_split.npz",
+        X_train=x_train_pca,
+        y_train=labels_arr[mask_train],
+        paths_train=paths_arr[mask_train],
+        X_val=x_val_pca,
+        y_val=labels_arr[mask_val],
+        paths_val=paths_arr[mask_val],
+        X_test=x_test_pca,
+        y_test=labels_arr[mask_test],
+        paths_test=paths_arr[mask_test],
         classes=np.array(classes),
     )
     joblib.dump(scaler, output_paths["features"] / "hog_scaler.joblib")
     joblib.dump(pca, output_paths["features"] / "hog_pca_model.joblib")
 
+    split_df = pd.DataFrame(
+        {"relative_path": paths_arr, "class_name": labels_arr, "split": split_arr}
+    )
+    split_df.to_csv(output_paths["logs"] / "dataset_split.csv", index=False)
+
     plot_pca_scatter(
-        x_pca=x_pca,
+        x_pca=x_pca_all,
         labels=labels,
         classes=classes,
         output_path=output_paths["plots"] / "pca_scatter_pc1_pc2.png",
@@ -1379,7 +1529,21 @@ def main() -> None:
     )
 
     metadata_df = pd.DataFrame(metadata_rows)
+    split_lookup = {p: s for p, s in zip(paths_arr.tolist(), split_arr.tolist())}
+    metadata_df["split"] = metadata_df["relative_path"].map(split_lookup).fillna("failed")
     metadata_df.to_csv(output_paths["logs"] / "preprocess_metadata.csv", index=False)
+
+    split_counts = {
+        "train": int(np.sum(mask_train)),
+        "val": int(np.sum(mask_val)),
+        "test": int(np.sum(mask_test)),
+    }
+    split_class_counts = (
+        split_df.groupby(["split", "class_name"]).size().reset_index(name="count")
+    )
+    split_class_counts.to_csv(
+        output_paths["logs"] / "dataset_split_by_class.csv", index=False
+    )
 
     summary = {
         "total_images": int(len(image_items)),
@@ -1400,9 +1564,16 @@ def main() -> None:
             "samples": int(x_hog.shape[0]),
             "dims": int(x_hog.shape[1]),
         },
+        "split": {
+            "train_ratio": args.train_ratio,
+            "val_ratio": args.val_ratio,
+            "test_ratio": args.test_ratio,
+            "counts": split_counts,
+        },
         "pca": {
-            "n_components": int(x_pca.shape[1]),
+            "n_components": int(x_pca_all.shape[1]),
             "explained_variance_sum": float(np.sum(pca.explained_variance_ratio_)),
+            "fit_on": "train_only",
         },
         "top_fail_reasons": fail_counter.most_common(15),
     }
