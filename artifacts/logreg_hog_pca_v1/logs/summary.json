@@ -1,0 +1,55 @@
+{
+  "model": "logreg",
+  "features_npz": "artifacts\\preprocess_hog_pca_v3\\features\\hog_pca_features_split.npz",
+  "selection_metric": "f1_macro",
+  "best_candidate_train_val": {
+    "model": "logreg",
+    "name": "logreg_C0.1_wbalanced",
+    "C": 0.1,
+    "class_weight": "balanced"
+  },
+  "dataset_shapes": {
+    "X_train": [
+      1175,
+      542
+    ],
+    "X_val": [
+      253,
+      542
+    ],
+    "X_test": [
+      252,
+      542
+    ],
+    "classes": [
+      "alicate_corte",
+      "calibrador",
+      "cutter",
+      "destornillador_chico_plano",
+      "llave_chica_mixta",
+      "llave_regulable",
+      "pelacables",
+      "wincha"
+    ]
+  },
+  "metrics": {
+    "validation": {
+      "accuracy": 0.857707509881423,
+      "precision_macro": 0.8538469205897885,
+      "recall_macro": 0.855421146953405,
+      "f1_macro": 0.8526386263332683,
+      "precision_weighted": 0.8559264971306277,
+      "recall_weighted": 0.857707509881423,
+      "f1_weighted": 0.8548611106928251
+    },
+    "test": {
+      "accuracy": 0.8452380952380952,
+      "precision_macro": 0.8498935584051293,
+      "recall_macro": 0.8413544845248475,
+      "f1_macro": 0.8426762747391341,
+      "precision_weighted": 0.8501141075099199,
+      "recall_weighted": 0.8452380952380952,
+      "f1_weighted": 0.8447454370651111
+    }
+  }
+}
