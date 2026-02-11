@@ -1,0 +1,7 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Intermediate / deprecated experiment artifacts
+artifacts/preprocess_hog_pca_v1/
+artifacts/preprocess_hog_pca_v2/

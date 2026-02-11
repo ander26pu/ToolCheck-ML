@@ -1,0 +1,54 @@
+{
+  "total_images": 1681,
+  "success_images": 1680,
+  "failed_images": 1,
+  "corrupted_images": 0,
+  "classes": [
+    "alicate_corte",
+    "calibrador",
+    "cutter",
+    "destornillador_chico_plano",
+    "llave_chica_mixta",
+    "llave_regulable",
+    "pelacables",
+    "wincha"
+  ],
+  "qc_thresholds": {
+    "laplacian_blur_p5": 22.76966285609493,
+    "brightness_low_p1": 99.19094463734568,
+    "brightness_high_p99": 124.76902613811728
+  },
+  "calibration": {
+    "success": false,
+    "used_frames": 0,
+    "used_markers": 0,
+    "reprojection_error": NaN
+  },
+  "hog": {
+    "target_size": 128,
+    "descriptor_size": 8100,
+    "samples": 1680,
+    "dims": 8100
+  },
+  "split": {
+    "train_ratio": 0.7,
+    "val_ratio": 0.15,
+    "test_ratio": 0.15,
+    "counts": {
+      "train": 1175,
+      "val": 253,
+      "test": 252
+    }
+  },
+  "pca": {
+    "n_components": 542,
+    "explained_variance_sum": 0.9500644207000732,
+    "fit_on": "train_only"
+  },
+  "top_fail_reasons": [
+    [
+      "roi:empty_alpha_roi",
+      1
+    ]
+  ]
+}
