@@ -86,3 +86,7 @@ Pipeline:
 ## Preprocessing HOG + PCA
 Guia de ejecucion del pipeline de preprocesamiento y extraccion de features:
 - `docs/preprocess_hog_pca.md`
+
+## Training SVM (train/val/test)
+Guia de entrenamiento y evaluacion con los features HOG+PCA:
+- `docs/train_svm.md`
