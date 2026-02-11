@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 import math
 import time
@@ -26,6 +27,9 @@ MARKER_LAYOUT_M = {
     2: (0.00, 0.10),
     3: (0.10, 0.10),
 }
+POSITION_ORDER = ["tl", "tr", "br", "bl"]
+POSITION_TO_EXPECTED_ID = {"tl": 0, "tr": 1, "br": 3, "bl": 2}
+EXPECTED_ID_TO_POSITION = {v: k for k, v in POSITION_TO_EXPECTED_ID.items()}
 
 
 @dataclass
@@ -356,6 +360,58 @@ def best_expected_markers(
             best_by_id[marker_id] = cc
             best_perimeter[marker_id] = perimeter
     return best_by_id
+
+
+def marker_center_board_points(marker_size_cm: float) -> Dict[str, np.ndarray]:
+    size_m = marker_size_cm / 100.0
+    out: Dict[str, np.ndarray] = {}
+    for pos in POSITION_ORDER:
+        marker_id = POSITION_TO_EXPECTED_ID[pos]
+        x, y = MARKER_LAYOUT_M[marker_id]
+        out[pos] = np.array([x + size_m / 2.0, y + size_m / 2.0], dtype=np.float32)
+    return out
+
+
+def choose_missing_positions_by_corner_distance(
+    missing_positions: List[str],
+    candidate_pool: List[Dict[str, object]],
+    image_targets: Dict[str, np.ndarray],
+) -> Dict[str, Dict[str, object]]:
+    if not missing_positions or not candidate_pool:
+        return {}
+
+    n = len(candidate_pool)
+    m = len(missing_positions)
+    if n < m:
+        return {}
+
+    # Limitamos para evitar explosión combinatoria en permutaciones.
+    if n > 10:
+        candidate_pool = sorted(
+            candidate_pool, key=lambda x: float(x["perimeter"]), reverse=True
+        )[:10]
+        n = len(candidate_pool)
+        if n < m:
+            return {}
+
+    best_score = float("inf")
+    best_assignment: Optional[Tuple[int, ...]] = None
+    for perm in itertools.permutations(range(n), m):
+        score = 0.0
+        for pos, idx in zip(missing_positions, perm):
+            center = candidate_pool[idx]["center"]
+            score += float(np.linalg.norm(center - image_targets[pos]))
+        if score < best_score:
+            best_score = score
+            best_assignment = perm
+
+    if best_assignment is None:
+        return {}
+
+    out: Dict[str, Dict[str, object]] = {}
+    for pos, idx in zip(missing_positions, best_assignment):
+        out[pos] = candidate_pool[idx]
+    return out
 
 def create_marker_mask(
     image_shape: Tuple[int, int, int], ordered_markers: List[np.ndarray], margin: int
@@ -731,47 +787,137 @@ def preprocess_one(
     )
     info.update(detect_info)
 
-    marker_map = best_expected_markers(corners, ids)
-    info["selection_mode"] = "homography_expected_ids"
-    info["markers_used_for_h"] = int(len(marker_map))
-    debug_images["02_detection"] = draw_detection_debug(
-        undistorted, corners, ids, list(marker_map.values()) if marker_map else None, None
-    )
+    marker_candidates: List[Dict[str, object]] = []
+    ids_flat = ids.flatten().tolist() if ids is not None else []
+    for idx, c in enumerate(corners):
+        cc = c.reshape(4, 2).astype(np.float32)
+        marker_id = int(ids_flat[idx]) if idx < len(ids_flat) else -1
+        marker_candidates.append(
+            {
+                "idx": idx,
+                "id": marker_id,
+                "corners": cc,
+                "center": cc.mean(axis=0),
+                "perimeter": float(cv2.arcLength(cc, True)),
+            }
+        )
 
-    if len(marker_map) < 2:
+    assigned_by_pos: Dict[str, Dict[str, object]] = {}
+    used_indices = set()
+    for pos in POSITION_ORDER:
+        expected_id = POSITION_TO_EXPECTED_ID[pos]
+        best: Optional[Dict[str, object]] = None
+        for cand in marker_candidates:
+            if int(cand["id"]) != expected_id:
+                continue
+            if best is None or float(cand["perimeter"]) > float(best["perimeter"]):
+                best = cand
+        if best is not None:
+            assigned_by_pos[pos] = best
+            used_indices.add(int(best["idx"]))
+
+    expected_assigned = len(assigned_by_pos)
+    h, w = undistorted.shape[:2]
+    image_targets = {
+        "tl": np.array([0.0, 0.0], dtype=np.float32),
+        "tr": np.array([float(w - 1), 0.0], dtype=np.float32),
+        "br": np.array([float(w - 1), float(h - 1)], dtype=np.float32),
+        "bl": np.array([0.0, float(h - 1)], dtype=np.float32),
+    }
+    missing_positions = [p for p in POSITION_ORDER if p not in assigned_by_pos]
+    pool = [c for c in marker_candidates if int(c["idx"]) not in used_indices]
+    filled = choose_missing_positions_by_corner_distance(
+        missing_positions=missing_positions,
+        candidate_pool=pool,
+        image_targets=image_targets,
+    )
+    assigned_by_pos.update(filled)
+
+    source_points: List[np.ndarray] = []
+    selected_markers: List[np.ndarray] = []
+    center_board_map = marker_center_board_points(marker_size_cm=marker_size_cm)
+    center_board_arr = np.array([center_board_map[p] for p in POSITION_ORDER], dtype=np.float32)
+    center_dst_arr = board_points_to_destination(
+        center_board_arr, marker_size_cm=marker_size_cm, rectified_size=rectified_size
+    )
+    center_dst_map = {p: center_dst_arr[i] for i, p in enumerate(POSITION_ORDER)}
+    dest_points: List[np.ndarray] = []
+    for pos in POSITION_ORDER:
+        cand = assigned_by_pos.get(pos)
+        if cand is None:
+            continue
+        source_points.append(np.array(cand["center"], dtype=np.float32))
+        dest_points.append(np.array(center_dst_map[pos], dtype=np.float32))
+        selected_markers.append(np.array(cand["corners"], dtype=np.float32))
+
+    info["markers_expected_assigned"] = int(expected_assigned)
+    info["markers_used_for_transform"] = int(len(source_points))
+    info["markers_total_candidates"] = int(len(marker_candidates))
+    if expected_assigned >= 4:
+        info["selection_mode"] = "center_expected_ids"
+    elif expected_assigned >= 2:
+        info["selection_mode"] = "center_expected_plus_positional"
+    else:
+        info["selection_mode"] = "center_positional"
+
+    if len(source_points) < 2:
+        debug_images["02_detection"] = draw_detection_debug(
+            undistorted,
+            corners,
+            ids,
+            selected_markers if selected_markers else None,
+            np.array(source_points, dtype=np.float32) if source_points else None,
+        )
         info["fail_stage"] = "marker_selection"
-        info["fail_reason"] = "not_enough_expected_ids_for_homography"
+        info["fail_reason"] = "not_enough_markers_for_transform"
         return False, debug_images, info, None
 
-    image_points: List[np.ndarray] = []
-    board_points: List[np.ndarray] = []
-    for marker_id in sorted(marker_map.keys()):
-        image_points.append(marker_map[marker_id])
-        board_points.append(marker_object_corners_m(marker_id, marker_size_cm=marker_size_cm))
-    image_points_arr = np.vstack(image_points).astype(np.float32)
-    board_points_arr = np.vstack(board_points).astype(np.float32)
-    dest_points_arr = board_points_to_destination(
-        board_points_arr, marker_size_cm=marker_size_cm, rectified_size=rectified_size
-    )
+    source_arr = np.array(source_points, dtype=np.float32)
+    dest_arr = np.array(dest_points, dtype=np.float32)
+    transform_kind = "affine"
+    inliers_count = 0
+    matrix: Optional[np.ndarray] = None
 
-    matrix, inliers = cv2.findHomography(
-        image_points_arr, dest_points_arr, method=cv2.RANSAC, ransacReprojThreshold=4.0
+    if len(source_points) >= 4:
+        matrix = cv2.getPerspectiveTransform(source_arr[:4], dest_arr[:4])
+        transform_kind = "perspective"
+        inliers_count = 4
+    else:
+        matrix_aff, inliers = cv2.estimateAffinePartial2D(
+            source_arr, dest_arr, method=cv2.LMEDS
+        )
+        if matrix_aff is None and len(source_points) == 3:
+            matrix_aff, inliers = cv2.estimateAffine2D(
+                source_arr, dest_arr, method=cv2.LMEDS
+            )
+        matrix = matrix_aff
+        inliers_count = int(inliers.sum()) if inliers is not None else 0
+
+    debug_images["02_detection"] = draw_detection_debug(
+        undistorted, corners, ids, selected_markers, source_arr
     )
     if matrix is None:
-        info["fail_stage"] = "homography"
-        info["fail_reason"] = "cv2_findhomography_failed"
+        info["fail_stage"] = "transform"
+        info["fail_reason"] = "cv2_transform_failed"
         return False, debug_images, info, None
-    info["homography_inliers"] = int(inliers.sum()) if inliers is not None else 0
+    info["transform_kind"] = transform_kind
+    info["transform_inliers"] = inliers_count
 
-    rectified = cv2.warpPerspective(undistorted, matrix, (rectified_size, rectified_size))
+    if transform_kind == "perspective":
+        rectified = cv2.warpPerspective(undistorted, matrix, (rectified_size, rectified_size))
+    else:
+        rectified = cv2.warpAffine(undistorted, matrix, (rectified_size, rectified_size))
     debug_images["03_rectified"] = rectified
 
-    marker_mask = create_marker_mask(
-        undistorted.shape, list(marker_map.values()), margin=marker_margin
-    )
-    marker_mask_rectified = cv2.warpPerspective(
-        marker_mask, matrix, (rectified_size, rectified_size)
-    )
+    marker_mask = create_marker_mask(undistorted.shape, selected_markers, margin=marker_margin)
+    if transform_kind == "perspective":
+        marker_mask_rectified = cv2.warpPerspective(
+            marker_mask, matrix, (rectified_size, rectified_size)
+        )
+    else:
+        marker_mask_rectified = cv2.warpAffine(
+            marker_mask, matrix, (rectified_size, rectified_size)
+        )
     green_mask = dynamic_green_mask(rectified)
     debug_images["04_green_mask"] = green_mask
 
@@ -790,6 +936,19 @@ def preprocess_one(
         return False, debug_images, info, None
 
     x, y, w, h = roi
+    # Si el ROI casi ocupa toda la placa, recorta por dentro del marco de marcadores
+    # para centrar la herramienta y reducir distracciones de bordes/soportes.
+    roi_area = float(w * h)
+    rect_area = float(rectified_size * rectified_size)
+    if roi_area > 0.75 * rect_area:
+        margin_px = int(max(12, rectified_size * 0.09))
+        x = max(x, margin_px)
+        y = max(y, margin_px)
+        x2 = min(x + w, rectified_size - margin_px)
+        y2 = min(y + h, rectified_size - margin_px)
+        w = max(1, x2 - x)
+        h = max(1, y2 - y)
+
     roi_rgba = object_rgba[y : y + h, x : x + w]
     debug_images["06_roi_rgba"] = roi_rgba
 
@@ -966,8 +1125,12 @@ def main() -> None:
             "flag_bright": False,
             "markers_expected_detected": 0,
             "markers_total_detected": 0,
+            "markers_expected_assigned": 0,
+            "markers_used_for_transform": 0,
             "detect_variant": "",
             "selection_mode": "",
+            "transform_kind": "",
+            "transform_inliers": 0,
             "final_gray_path": "",
         }
 
@@ -1002,8 +1165,12 @@ def main() -> None:
 
         row["markers_expected_detected"] = int(info.get("expected_ids_detected", 0))
         row["markers_total_detected"] = int(info.get("total_markers_detected", 0))
+        row["markers_expected_assigned"] = int(info.get("markers_expected_assigned", 0))
+        row["markers_used_for_transform"] = int(info.get("markers_used_for_transform", 0))
         row["detect_variant"] = str(info.get("variant", ""))
         row["selection_mode"] = str(info.get("selection_mode", ""))
+        row["transform_kind"] = str(info.get("transform_kind", ""))
+        row["transform_inliers"] = int(info.get("transform_inliers", 0))
 
         should_save_sample = item.path.stem in debug_samples[item.class_name]
 
