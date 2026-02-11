@@ -90,3 +90,7 @@ Guia de ejecucion del pipeline de preprocesamiento y extraccion de features:
 ## Training SVM (train/val/test)
 Guia de entrenamiento y evaluacion con los features HOG+PCA:
 - `docs/train_svm.md`
+
+## Training Random Forest (train/val/test)
+Guia de entrenamiento y evaluacion con los features HOG+PCA:
+- `docs/train_random_forest.md`
