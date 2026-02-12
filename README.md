@@ -106,3 +106,7 @@ Guia para entrenar GradientBoosting, AdaBoost y NaiveBayes:
 ## Training ML clasico (bloque 3)
 Guia para entrenar XGBoost, LightGBM y CatBoost:
 - `docs/train_classic_ml_block3.md`
+
+## Dashboard comparativo (bloque 1)
+Guia para generar graficos por modelo y comparativos globales (PNG + HTML + CSV):
+- `docs/model_dashboard_block1.md`
