@@ -102,3 +102,7 @@ Guia para entrenar ExtraTrees, Logistic Regression y KNN:
 ## Training ML clasico (bloque 2)
 Guia para entrenar GradientBoosting, AdaBoost y NaiveBayes:
 - `docs/train_classic_ml_block2.md`
+
+## Training ML clasico (bloque 3)
+Guia para entrenar XGBoost, LightGBM y CatBoost:
+- `docs/train_classic_ml_block3.md`

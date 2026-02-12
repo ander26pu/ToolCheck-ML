@@ -11,6 +11,8 @@ import joblib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from catboost import CatBoostClassifier
+from lightgbm import LGBMClassifier
 from sklearn.ensemble import AdaBoostClassifier, ExtraTreesClassifier, GradientBoostingClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
@@ -24,13 +26,17 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.tree import DecisionTreeClassifier
+from xgboost import XGBClassifier
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Entrena modelo clasico "
-            "(ExtraTrees, LogReg, KNN, GradientBoosting, AdaBoost, NaiveBayes) "
+            "("
+            "ExtraTrees, LogReg, KNN, GradientBoosting, AdaBoost, NaiveBayes, "
+            "XGBoost, LightGBM, CatBoost"
+            ") "
             "con split train/val/test."
         )
     )
@@ -45,6 +51,9 @@ def parse_args() -> argparse.Namespace:
             "gradientboosting",
             "adaboost",
             "naivebayes",
+            "xgboost",
+            "lightgbm",
+            "catboost",
         ],
         help="Modelo clasico a entrenar.",
     )
@@ -217,6 +226,57 @@ def model_candidates(model_name: str) -> List[Dict[str, object]]:
                 )
         return candidates
 
+    if model_name == "xgboost":
+        for n_estimators in [150, 300]:
+            for max_depth in [4, 6]:
+                for learning_rate in [0.05, 0.1]:
+                    candidates.append(
+                        {
+                            "name": (
+                                f"xgb_n{n_estimators}_d{max_depth}_lr{learning_rate}"
+                            ),
+                            "n_estimators": n_estimators,
+                            "max_depth": max_depth,
+                            "learning_rate": learning_rate,
+                            "subsample": 0.9,
+                            "colsample_bytree": 0.9,
+                        }
+                    )
+        return candidates
+
+    if model_name == "lightgbm":
+        for n_estimators in [150, 300]:
+            for num_leaves in [31, 63]:
+                for learning_rate in [0.05, 0.1]:
+                    candidates.append(
+                        {
+                            "name": (
+                                f"lgbm_n{n_estimators}_leaf{num_leaves}_lr{learning_rate}"
+                            ),
+                            "n_estimators": n_estimators,
+                            "num_leaves": num_leaves,
+                            "learning_rate": learning_rate,
+                            "subsample": 0.9,
+                            "colsample_bytree": 0.9,
+                        }
+                    )
+        return candidates
+
+    if model_name == "catboost":
+        for iterations in [120, 220]:
+            for depth in [4]:
+                for learning_rate in [0.05, 0.1]:
+                    candidates.append(
+                        {
+                            "name": f"cat_it{iterations}_d{depth}_lr{learning_rate}",
+                            "iterations": iterations,
+                            "depth": depth,
+                            "learning_rate": learning_rate,
+                            "l2_leaf_reg": 3.0,
+                        }
+                    )
+        return candidates
+
     raise ValueError(f"Modelo no soportado: {model_name}")
 
 
@@ -293,6 +353,47 @@ def build_model(model_name: str, candidate: Dict[str, object], seed: int):
                 ]
             )
         return estimator
+
+    if model_name == "xgboost":
+        return XGBClassifier(
+            n_estimators=int(candidate["n_estimators"]),
+            max_depth=int(candidate["max_depth"]),
+            learning_rate=float(candidate["learning_rate"]),
+            subsample=float(candidate["subsample"]),
+            colsample_bytree=float(candidate["colsample_bytree"]),
+            objective="multi:softmax",
+            eval_metric="mlogloss",
+            tree_method="hist",
+            random_state=seed,
+            n_jobs=-1,
+        )
+
+    if model_name == "lightgbm":
+        return LGBMClassifier(
+            n_estimators=int(candidate["n_estimators"]),
+            num_leaves=int(candidate["num_leaves"]),
+            learning_rate=float(candidate["learning_rate"]),
+            subsample=float(candidate["subsample"]),
+            colsample_bytree=float(candidate["colsample_bytree"]),
+            objective="multiclass",
+            class_weight="balanced",
+            random_state=seed,
+            n_jobs=-1,
+            verbose=-1,
+        )
+
+    if model_name == "catboost":
+        return CatBoostClassifier(
+            iterations=int(candidate["iterations"]),
+            depth=int(candidate["depth"]),
+            learning_rate=float(candidate["learning_rate"]),
+            l2_leaf_reg=float(candidate["l2_leaf_reg"]),
+            loss_function="MultiClass",
+            random_seed=seed,
+            thread_count=-1,
+            verbose=False,
+            allow_writing_files=False,
+        )
 
     raise ValueError(f"Modelo no soportado: {model_name}")
 
