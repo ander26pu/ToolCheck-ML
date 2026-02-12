@@ -1,0 +1,20 @@
+{
+  "models_probability_evaluated": [
+    "logreg",
+    "lightgbm",
+    "svm_calibrated",
+    "rf",
+    "xgboost",
+    "extratrees",
+    "catboost",
+    "gradientboosting",
+    "knn",
+    "adaboost",
+    "naivebayes"
+  ],
+  "baseline": "svm_calibrated",
+  "svm_calibration_method": "isotonic",
+  "n_test_samples": 252,
+  "n_classes": 8,
+  "output_root": "artifacts\\model_dashboard_v2_probcal"
+}
