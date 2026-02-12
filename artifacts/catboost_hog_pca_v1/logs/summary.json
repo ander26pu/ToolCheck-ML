@@ -1,0 +1,57 @@
+{
+  "model": "catboost",
+  "features_npz": "artifacts\\preprocess_hog_pca_v3\\features\\hog_pca_features_split.npz",
+  "selection_metric": "f1_macro",
+  "best_candidate_train_val": {
+    "model": "catboost",
+    "name": "cat_it220_d4_lr0.1",
+    "iterations": 220,
+    "depth": 4,
+    "learning_rate": 0.1,
+    "l2_leaf_reg": 3.0
+  },
+  "dataset_shapes": {
+    "X_train": [
+      1175,
+      542
+    ],
+    "X_val": [
+      253,
+      542
+    ],
+    "X_test": [
+      252,
+      542
+    ],
+    "classes": [
+      "alicate_corte",
+      "calibrador",
+      "cutter",
+      "destornillador_chico_plano",
+      "llave_chica_mixta",
+      "llave_regulable",
+      "pelacables",
+      "wincha"
+    ]
+  },
+  "metrics": {
+    "validation": {
+      "accuracy": 0.7786561264822134,
+      "precision_macro": 0.7807093537840442,
+      "recall_macro": 0.7745603718637992,
+      "f1_macro": 0.7691872472697534,
+      "precision_weighted": 0.7815549569404242,
+      "recall_weighted": 0.7786561264822134,
+      "f1_weighted": 0.7716295425310764
+    },
+    "test": {
+      "accuracy": 0.7976190476190477,
+      "precision_macro": 0.796068850056676,
+      "recall_macro": 0.7919018817204301,
+      "f1_macro": 0.7904371519222531,
+      "precision_weighted": 0.796198814759269,
+      "recall_weighted": 0.7976190476190477,
+      "f1_weighted": 0.7931307586076
+    }
+  }
+}
