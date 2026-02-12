@@ -114,3 +114,7 @@ Guia para generar graficos por modelo y comparativos globales (PNG + HTML + CSV)
 ## Dashboard probabilidad + calibracion (bloque 2)
 Guia para calibrar SVM y comparar ROC/PR/reliability por modelo:
 - `docs/model_dashboard_block2_probcal.md`
+
+## Dashboard ejecutivo (bloque 3)
+Guia para consolidar ranking final ponderado y reporte de recomendacion:
+- `docs/model_dashboard_block3_executive.md`
