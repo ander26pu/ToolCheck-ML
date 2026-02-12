@@ -1,0 +1,10 @@
+{
+  "model": "rf",
+  "accuracy": 0.8214285714285714,
+  "precision_macro": 0.8343021561771562,
+  "recall_macro": 0.8164986559139785,
+  "f1_macro": 0.8192326621333645,
+  "precision_weighted": 0.8314067414067414,
+  "recall_weighted": 0.8214285714285714,
+  "f1_weighted": 0.8198207455967533
+}

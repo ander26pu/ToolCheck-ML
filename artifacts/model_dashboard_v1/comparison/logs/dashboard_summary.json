@@ -1,0 +1,19 @@
+{
+  "models_evaluated": [
+    "svm",
+    "rf",
+    "logreg",
+    "lightgbm",
+    "extratrees",
+    "xgboost",
+    "catboost",
+    "gradientboosting",
+    "adaboost",
+    "knn",
+    "naivebayes"
+  ],
+  "baseline_model": "svm",
+  "n_test_samples": 252,
+  "n_classes": 8,
+  "output_root": "artifacts\\model_dashboard_v1"
+}

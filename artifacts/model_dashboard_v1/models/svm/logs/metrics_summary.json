@@ -1,0 +1,10 @@
+{
+  "model": "svm",
+  "accuracy": 0.8333333333333334,
+  "precision_macro": 0.8375059655523651,
+  "recall_macro": 0.8307012405550712,
+  "f1_macro": 0.8302220495576222,
+  "precision_weighted": 0.8374913018150485,
+  "recall_weighted": 0.8333333333333334,
+  "f1_weighted": 0.8315393105228912
+}

@@ -1,0 +1,10 @@
+{
+  "model": "gradientboosting",
+  "accuracy": 0.7817460317460317,
+  "precision_macro": 0.7856230614851305,
+  "recall_macro": 0.7768299549549549,
+  "f1_macro": 0.7757456404371791,
+  "precision_weighted": 0.7851597332303408,
+  "recall_weighted": 0.7817460317460317,
+  "f1_weighted": 0.7777394789391817
+}

@@ -1,0 +1,10 @@
+{
+  "model": "naivebayes",
+  "accuracy": 0.5079365079365079,
+  "precision_macro": 0.5121960405683215,
+  "recall_macro": 0.4961400664777681,
+  "f1_macro": 0.46878499773687454,
+  "precision_weighted": 0.5074742625129096,
+  "recall_weighted": 0.5079365079365079,
+  "f1_weighted": 0.4705341999202725
+}
