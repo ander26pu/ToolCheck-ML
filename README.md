@@ -110,3 +110,7 @@ Guia para entrenar XGBoost, LightGBM y CatBoost:
 ## Dashboard comparativo (bloque 1)
 Guia para generar graficos por modelo y comparativos globales (PNG + HTML + CSV):
 - `docs/model_dashboard_block1.md`
+
+## Dashboard probabilidad + calibracion (bloque 2)
+Guia para calibrar SVM y comparar ROC/PR/reliability por modelo:
+- `docs/model_dashboard_block2_probcal.md`
