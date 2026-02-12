@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reporte Ejecutivo de Modelos</title>
+  <style>
+    body { font-family: Segoe UI, Arial, sans-serif; margin: 24px; color: #222; }
+    h1, h2 { margin: 0 0 12px 0; }
+    h1 { font-size: 28px; }
+    h2 { font-size: 20px; margin-top: 26px; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+    .card { border: 1px solid #ddd; border-radius: 10px; padding: 12px 14px; background: #fafafa; }
+    .k { font-size: 12px; color: #666; text-transform: uppercase; letter-spacing: .3px; }
+    .v { font-size: 18px; font-weight: 600; margin-top: 4px; }
+    .tbl { border-collapse: collapse; width: 100%; font-size: 13px; }
+    .tbl th, .tbl td { border: 1px solid #e6e6e6; padding: 6px 8px; text-align: left; }
+    .tbl th { background: #f3f5f7; }
+    .hint { color: #666; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <h1>Reporte Ejecutivo de Modelos</h1>
+  <p class="hint">Resumen consolidado de rendimiento, calibración y estabilidad para decisión final.</p>
+
+  <div class="cards">
+    <div class="card"><div class="k">Campeon performance</div><div class="v">logreg</div></div>
+    <div class="card"><div class="k">Campeon calibración</div><div class="v">xgboost</div></div>
+    <div class="card"><div class="k">Campeon calibración práctica</div><div class="v">logreg</div></div>
+    <div class="card"><div class="k">Campeon balanceado</div><div class="v">logreg</div></div>
+  </div>
+
+  <h2>Top Por F1-Macro</h2>
+  <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>model</th>
+      <th>accuracy</th>
+      <th>f1_macro</th>
+      <th>roc_auc_macro_ovr</th>
+      <th>pr_auc_macro</th>
+      <th>ece</th>
+      <th>log_loss</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>logreg</td>
+      <td>0.8452</td>
+      <td>0.8427</td>
+      <td>0.9738</td>
+      <td>0.9179</td>
+      <td>0.0618</td>
+      <td>0.5310</td>
+    </tr>
+    <tr>
+      <td>lightgbm</td>
+      <td>0.8413</td>
+      <td>0.8366</td>
+      <td>0.9755</td>
+      <td>0.9119</td>
+      <td>0.0844</td>
+      <td>0.6899</td>
+    </tr>
+    <tr>
+      <td>svm_calibrated</td>
+      <td>0.8333</td>
+      <td>0.8297</td>
+      <td>0.9705</td>
+      <td>0.9123</td>
+      <td>0.1761</td>
+      <td>0.6491</td>
+    </tr>
+    <tr>
+      <td>rf</td>
+      <td>0.8214</td>
+      <td>0.8192</td>
+      <td>0.9652</td>
+      <td>0.8967</td>
+      <td>0.4216</td>
+      <td>1.0988</td>
+    </tr>
+    <tr>
+      <td>xgboost</td>
+      <td>0.8135</td>
+      <td>0.8090</td>
+      <td>0.9753</td>
+      <td>0.9136</td>
+      <td>0.0600</td>
+      <td>0.5752</td>
+    </tr>
+    <tr>
+      <td>extratrees</td>
+      <td>0.8095</td>
+      <td>0.8071</td>
+      <td>0.9741</td>
+      <td>0.9088</td>
+      <td>0.3921</td>
+      <td>1.0814</td>
+    </tr>
+  </tbody>
+</table>
+
+  <h2>Top Perfil Calibración</h2>
+  <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>model</th>
+      <th>ece</th>
+      <th>log_loss</th>
+      <th>f1_macro</th>
+      <th>accuracy</th>
+      <th>roc_auc_macro_ovr</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>xgboost</td>
+      <td>0.0600</td>
+      <td>0.5752</td>
+      <td>0.8090</td>
+      <td>0.8135</td>
+      <td>0.9753</td>
+    </tr>
+    <tr>
+      <td>logreg</td>
+      <td>0.0618</td>
+      <td>0.5310</td>
+      <td>0.8427</td>
+      <td>0.8452</td>
+      <td>0.9738</td>
+    </tr>
+    <tr>
+      <td>lightgbm</td>
+      <td>0.0844</td>
+      <td>0.6899</td>
+      <td>0.8366</td>
+      <td>0.8413</td>
+      <td>0.9755</td>
+    </tr>
+    <tr>
+      <td>knn</td>
+      <td>0.1725</td>
+      <td>5.0148</td>
+      <td>0.7344</td>
+      <td>0.7262</td>
+      <td>0.8998</td>
+    </tr>
+    <tr>
+      <td>svm_calibrated</td>
+      <td>0.1761</td>
+      <td>0.6491</td>
+      <td>0.8297</td>
+      <td>0.8333</td>
+      <td>0.9705</td>
+    </tr>
+    <tr>
+      <td>gradientboosting</td>
+      <td>0.1987</td>
+      <td>0.8351</td>
+      <td>0.7757</td>
+      <td>0.7817</td>
+      <td>0.9605</td>
+    </tr>
+  </tbody>
+</table>
+
+  <h2>Top Perfil Balanceado</h2>
+  <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>model</th>
+      <th>score_balanced_reliable</th>
+      <th>f1_macro</th>
+      <th>accuracy</th>
+      <th>ece</th>
+      <th>log_loss</th>
+      <th>f1_ci_width</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>logreg</td>
+      <td>0.9903</td>
+      <td>0.8427</td>
+      <td>0.8452</td>
+      <td>0.0618</td>
+      <td>0.5310</td>
+      <td>0.0922</td>
+    </tr>
+    <tr>
+      <td>lightgbm</td>
+      <td>0.9799</td>
+      <td>0.8366</td>
+      <td>0.8413</td>
+      <td>0.0844</td>
+      <td>0.6899</td>
+      <td>0.0899</td>
+    </tr>
+    <tr>
+      <td>xgboost</td>
+      <td>0.9409</td>
+      <td>0.8090</td>
+      <td>0.8135</td>
+      <td>0.0600</td>
+      <td>0.5752</td>
+      <td>0.0962</td>
+    </tr>
+    <tr>
+      <td>svm_calibrated</td>
+      <td>0.8814</td>
+      <td>0.8297</td>
+      <td>0.8333</td>
+      <td>0.1761</td>
+      <td>0.6491</td>
+      <td>0.0936</td>
+    </tr>
+    <tr>
+      <td>catboost</td>
+      <td>0.8130</td>
+      <td>0.7904</td>
+      <td>0.7976</td>
+      <td>0.2326</td>
+      <td>0.8576</td>
+      <td>0.1011</td>
+    </tr>
+    <tr>
+      <td>extratrees</td>
+      <td>0.8061</td>
+      <td>0.8071</td>
+      <td>0.8095</td>
+      <td>0.3921</td>
+      <td>1.0814</td>
+      <td>0.0987</td>
+    </tr>
+  </tbody>
+</table>
+
+  <h2>Sugerencia de Uso</h2>
+  <ul>
+    <li><b>Si priorizas exactitud global:</b> logreg.</li>
+    <li><b>Si priorizas confiabilidad probabilística:</b> xgboost.</li>
+    <li><b>Si quieres equilibrio para producción:</b> logreg.</li>
+  </ul>
+</body>
+</html>

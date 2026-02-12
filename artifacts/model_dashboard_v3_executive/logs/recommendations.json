@@ -1,0 +1,12 @@
+{
+  "performance_champion": "logreg",
+  "performance_champion_f1_macro": 0.8426762747391341,
+  "calibration_champion": "xgboost",
+  "calibration_champion_ece": 0.0600318565859578,
+  "calibration_practical_champion": "logreg",
+  "calibration_practical_f1_macro": 0.8426762747391341,
+  "calibration_practical_ece": 0.0617536793089454,
+  "balanced_champion": "logreg",
+  "balanced_champion_score": 0.9903423150689209,
+  "calibration_gap_used": 0.02
+}
