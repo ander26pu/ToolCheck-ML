@@ -1,0 +1,14 @@
+{
+  "features_npz": "artifacts\\preprocess_hog_pca_v3\\features\\hog_pca_features_split.npz",
+  "n_train": 1175,
+  "n_val": 253,
+  "n_test": 252,
+  "n_features": 542,
+  "models": [
+    "logreg",
+    "lightgbm",
+    "svm",
+    "rf",
+    "xgboost"
+  ]
+}

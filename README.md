@@ -38,6 +38,9 @@ Top de modelos en test por macro F1:
 Fuente:
 - `artifacts/model_dashboard_v1/comparison/logs/model_metrics_test.csv`
 
+Reporte detallado Top-5 (`HOG` vs `HOG+PCA`):
+- `docs/top5_hog_vs_hog_pca_report.md`
+
 ## Lectura Rapida Para Personas No Tecnicas
 
 Este flujo se puede entender en 4 pasos:
