@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -24,6 +25,30 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=Path("docs/assets/top5_hog_vs_hog_pca"),
         help="Directorio de salida para imagenes PNG.",
+    )
+    parser.add_argument(
+        "--hog-only-metrics-csv",
+        type=Path,
+        default=Path("artifacts/top5_hog_only_benchmark_v1/logs/top5_hog_only_metrics_test.csv"),
+        help="CSV con metricas de test para HOG puro.",
+    )
+    parser.add_argument(
+        "--hog-pca-metrics-csv",
+        type=Path,
+        default=Path("artifacts/top5_hog_pca_benchmark_v1/logs/top5_hog_pca_metrics_test.csv"),
+        help="CSV con metricas de test para HOG+PCA.",
+    )
+    parser.add_argument(
+        "--hog-summary-json",
+        type=Path,
+        default=Path("artifacts/top5_hog_only_benchmark_v1/logs/summary.json"),
+        help="Summary JSON para extraer n_test si no se especifica --n-test.",
+    )
+    parser.add_argument(
+        "--n-test",
+        type=int,
+        default=None,
+        help="Numero de muestras de test. Si se omite, se intenta leer desde --hog-summary-json.",
     )
     return parser.parse_args()
 
@@ -192,6 +217,111 @@ def plot_individual_cards(df: pd.DataFrame, output_dir: Path) -> None:
         plt.close(fig)
 
 
+def resolve_n_test(args: argparse.Namespace) -> int:
+    if args.n_test is not None:
+        return int(args.n_test)
+    if args.hog_summary_json.exists():
+        payload = json.loads(args.hog_summary_json.read_text(encoding="utf-8"))
+        n_test = payload.get("n_test")
+        if n_test is not None:
+            return int(n_test)
+    return 252
+
+
+def build_inference_summary(
+    ordered_models: list[str],
+    hog_only_metrics: pd.DataFrame,
+    hog_pca_metrics: pd.DataFrame,
+    n_test: int,
+) -> pd.DataFrame:
+    hog_only = hog_only_metrics.set_index("model")
+    hog_pca = hog_pca_metrics.set_index("model")
+
+    rows: list[dict[str, object]] = []
+    for model in ordered_models:
+        pca_row = hog_pca.loc[model]
+        hog_row = hog_only.loc[model]
+
+        pca_latency_ms = float(pca_row["predict_sec_test"]) * 1000.0 / n_test
+        hog_latency_ms = float(hog_row["predict_sec_test"]) * 1000.0 / n_test
+
+        rows.append(
+            {
+                "model": model,
+                "hog_pca_predict_sec_test": float(pca_row["predict_sec_test"]),
+                "hog_only_predict_sec_test": float(hog_row["predict_sec_test"]),
+                "hog_pca_latency_ms_per_sample": pca_latency_ms,
+                "hog_only_latency_ms_per_sample": hog_latency_ms,
+                "hog_pca_throughput_samples_per_sec": 1000.0 / pca_latency_ms,
+                "hog_only_throughput_samples_per_sec": 1000.0 / hog_latency_ms,
+                "hog_pca_f1_macro_test": float(pca_row["f1_macro"]),
+                "hog_only_f1_macro_test": float(hog_row["f1_macro"]),
+                "hog_pca_eff_f1_over_latency": float(pca_row["f1_macro"]) / pca_latency_ms,
+                "hog_only_eff_f1_over_latency": float(hog_row["f1_macro"]) / hog_latency_ms,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def plot_inference_latency(df: pd.DataFrame, output_dir: Path) -> None:
+    models = df["model"].tolist()
+    x = np.arange(len(models))
+    width = 0.36
+
+    pca_latency = df["hog_pca_latency_ms_per_sample"].to_numpy(dtype=float)
+    hog_latency = df["hog_only_latency_ms_per_sample"].to_numpy(dtype=float)
+
+    pca_thr = df["hog_pca_throughput_samples_per_sec"].to_numpy(dtype=float)
+    hog_thr = df["hog_only_throughput_samples_per_sec"].to_numpy(dtype=float)
+
+    fig, axes = plt.subplots(2, 1, figsize=(12, 9), sharex=True)
+
+    axes[0].bar(x - width / 2, pca_latency, width=width, label="HOG+PCA", color="#4c78a8")
+    axes[0].bar(x + width / 2, hog_latency, width=width, label="HOG", color="#f58518")
+    axes[0].set_yscale("log")
+    axes[0].set_ylabel("Latencia por muestra (ms, log)")
+    axes[0].set_title("Comparacion de latencia de inferencia")
+    axes[0].grid(axis="y", linestyle="--", alpha=0.35)
+    axes[0].legend()
+
+    axes[1].bar(x - width / 2, pca_thr, width=width, label="HOG+PCA", color="#4c78a8")
+    axes[1].bar(x + width / 2, hog_thr, width=width, label="HOG", color="#f58518")
+    axes[1].set_yscale("log")
+    axes[1].set_ylabel("Throughput (muestras/s, log)")
+    axes[1].set_title("Comparacion de throughput de inferencia")
+    axes[1].grid(axis="y", linestyle="--", alpha=0.35)
+    axes[1].set_xticks(x)
+    axes[1].set_xticklabels(models)
+
+    fig.tight_layout()
+    fig.savefig(output_dir / "comparison_inference_latency_throughput.png", dpi=180)
+    plt.close(fig)
+
+
+def plot_inference_efficiency(df: pd.DataFrame, output_dir: Path) -> None:
+    models = df["model"].tolist()
+    x = np.arange(len(models))
+    width = 0.36
+
+    pca_eff = df["hog_pca_eff_f1_over_latency"].to_numpy(dtype=float)
+    hog_eff = df["hog_only_eff_f1_over_latency"].to_numpy(dtype=float)
+
+    fig, ax = plt.subplots(figsize=(12, 5.5))
+    ax.bar(x - width / 2, pca_eff, width=width, label="HOG+PCA", color="#4c78a8")
+    ax.bar(x + width / 2, hog_eff, width=width, label="HOG", color="#f58518")
+    ax.set_yscale("log")
+    ax.set_ylabel("Eficiencia = F1 / latencia_ms (log)")
+    ax.set_title("Eficiencia de inferencia por modelo")
+    ax.grid(axis="y", linestyle="--", alpha=0.35)
+    ax.legend()
+    ax.set_xticks(x)
+    ax.set_xticklabels(models)
+
+    fig.tight_layout()
+    fig.savefig(output_dir / "comparison_inference_efficiency.png", dpi=180)
+    plt.close(fig)
+
+
 def main() -> None:
     args = parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -206,6 +336,19 @@ def main() -> None:
     plot_delta_metrics(df, args.output_dir)
     plot_rankings(df, args.output_dir)
     plot_individual_cards(df, args.output_dir)
+
+    n_test = resolve_n_test(args)
+    hog_only_metrics = pd.read_csv(args.hog_only_metrics_csv)
+    hog_pca_metrics = pd.read_csv(args.hog_pca_metrics_csv)
+    inference_df = build_inference_summary(
+        ordered_models=df["model"].tolist(),
+        hog_only_metrics=hog_only_metrics,
+        hog_pca_metrics=hog_pca_metrics,
+        n_test=n_test,
+    )
+    inference_df.to_csv(args.output_dir / "inference_efficiency_table.csv", index=False)
+    plot_inference_latency(inference_df, args.output_dir)
+    plot_inference_efficiency(inference_df, args.output_dir)
 
     print(f"Graficos generados en: {args.output_dir}")
 
